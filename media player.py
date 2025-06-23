@@ -1,7 +1,7 @@
 import tkinter as tk
-import pygame.mixer as sound
 from os import listdir, path
-from mutagen.mp3 import MP3
+import pygame.mixer as sound #pygame needs to be installed
+from mutagen.mp3 import MP3 #mutagen needs to be installed
 from time import sleep
 import threading
 
@@ -28,11 +28,11 @@ for p in range(len(playlists)):
 
 #region play menu
 playMenu = tk.Canvas(
-    r, height=116, bg='#282828',
+    r, width=r.winfo_screenwidth(), height=116, bg='#282828',
     highlightthickness=0)
-playMenu.pack(side='bottom', fill='x')
+playMenu.pack(side='bottom')
 
-def song_playing(song):
+def song_timer(song):
     l = MP3(song).info.length
     playMenu.delete('musiclength')
     playMenu.create_text(
@@ -41,6 +41,12 @@ def song_playing(song):
         (str(int(l % 60)).zfill(2)))),
         font=('Consolas', 8),
         anchor='w', fill='#ffffff', tags='musiclength')
+    playMenu.create_text(
+        int(playMenu.cget('width')) - 4, 4, text=':'.join(((str(int(l - (l % 3600)) // 3600).zfill(2)),
+        (str(int(l - (l - l % 3600) - (l % 60)) // 60).zfill(2)),
+        (str(int(l % 60)).zfill(2)))),
+        font=('Consolas', 8),
+        anchor='e', fill='#ffffff', tags='musiclength')
 #endregion
 
 #region side menu
@@ -107,12 +113,11 @@ def click_on_song(i):
     global songCurrentlyPlaying
     mainMenu.delete('chosenbox')
     if 18 < i.y - scroll < (len(playlistContent[0]) * 36 + 18):
-         sound.music.load(playlistContent[0][(i.y - scroll - 18) // 36])
+        sound.music.load(playlistContent[0][(i.y - scroll - 18) // 36])
         sound.music.play()
-        songTimer = threading.Thread(target=song_playing, args=(playlistContent[0][(i.y - scroll - 18) // 36], ), daemon=True)
-        songTimer.start()
         songCurrentlyPlaying = (i.y - scroll - 18) // 36
         song_text()
+        song_timer(playlistContent[0][(i.y - scroll - 18) // 36])
 
 def menu_scroll(i):
     global scroll
