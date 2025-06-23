@@ -1,0 +1,11 @@
+custom title bar
+search function
+directional audio
+basically just wmp
+no video
+sound control in app
+buttons change colour on hover
+make it so that playlists can have special characters in their names
+equaliser
+if window is fullscreened, make the ui different
+add all those buttons that shuffle and loop
