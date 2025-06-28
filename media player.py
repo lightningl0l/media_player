@@ -1,9 +1,12 @@
 import tkinter as tk
 from os import listdir, path
-import pygame.mixer as sound #pygame needs to be installed
-from mutagen.mp3 import MP3 #mutagen needs to be installed
+import pygame.mixer as sound #pygame needs to be installed with "pip install pygame"
+from mutagen.mp3 import MP3 #mutagen needs to be installed with "pip install mutagen"
+from mutagen.wave import WAVE
+from mutagen.oggvorbis import OggVorbis
 import time
 import threading
+from keyboard import hook #keyboard needs to be installed with "pip install keyboard"
 
 #region setup
 r = tk.Tk()
@@ -14,16 +17,95 @@ sound.init()
 
 scroll = 0
 songCurrentlyPlaying = -1
+paused = False
+bpfs = 0
 try:
-    playlists = listdir(path.expanduser('~') + '\\Music\\Playlists')
+    playlists = listdir(path.join(path.expanduser('~'), 'Music', 'Playlists'))
     playlists = [f.replace('.m3u8', '') for f in playlists if f.endswith('.m3u8')]
 except FileNotFoundError:
     playlists = []
 playlistContent = []
 for p in range(len(playlists)):
     playlistContent.append([])
-    with open(path.expanduser('~') + '\\Music\\Playlists\\' + playlists[p] + '.m3u8', encoding='utf-8') as lis:
+    with open(path.join(path.expanduser('~'), 'Music', 'Playlists', playlists[p] + '.m3u8'), encoding='utf-8') as lis:
         playlistContent[p] = [l.replace('\n', '') for l in lis if l and l[0] not in ('#', '\n')]
+#endregion
+
+#region threads
+def timer_bar():
+    global songCurrentlyPlaying, paused, l, bpfs
+    while True:
+        time.sleep(.02)
+        if songCurrentlyPlaying != -1:
+            song = playlistContent[0][songCurrentlyPlaying]
+            if song.endswith('.mp3'):
+                l = MP3(song).info.length #song length in seconds
+            elif song.endswith('.wav'):
+                l = WAVE(song).info.length
+            elif song.split('.')[-1] in ('ogg', 'oga', 'mogg'):
+                l = OggVorbis(song).info.length
+
+            n = bpfs * 4
+            while n <= l * 4:
+                if song != playlistContent[0][songCurrentlyPlaying]:
+                    break
+                while paused:
+                    time.sleep(.02)
+                n = bpfs * 4
+                playMenu.delete('timeline')
+                diff = 88 + (n / (l * 4)) * (int(playMenu.cget('width')) - 176)
+                playMenu.create_line(88, 16, diff, 16, width=4, fill='#FF7F3F',
+                                    capstyle='round', tags='timeline')
+                playMenu.create_line(diff, 16, diff, 16, width=22, fill='#454545',
+                                    capstyle='round', tags='timeline')
+                playMenu.create_line(diff, 16, diff, 16, width=10, fill='#FF7F3F',
+                                    capstyle='round', tags='timeline')
+                time.sleep(0.25)
+                bpfs += .25
+
+def timer_nums():
+    global songCurrentlyPlaying, paused, bpfs
+    while True:
+        time.sleep(.02)
+        if songCurrentlyPlaying != -1:
+            song = playlistContent[0][songCurrentlyPlaying]
+            if song.endswith('.mp3'):
+                l = MP3(song).info.length #song length in seconds
+            elif song.endswith('.wav'):
+                l = WAVE(song).info.length
+            elif song.split('.')[-1] in ('ogg', 'oga', 'mogg'):
+                l = OggVorbis(song).info.length
+
+            n = int(bpfs)
+            while n <= l:
+                if song != playlistContent[0][songCurrentlyPlaying]:
+                    break
+                while paused:
+                    time.sleep(0.02)
+                n = int(bpfs)
+                bpf = (int(n // 3600), int(n % 3600 // 60), n % 60)
+                timeL = ':'.join((str(bpf[0]).zfill(2), str(bpf[1]).zfill(2),
+                                str(bpf[2]).zfill(2)))
+                timeR = ':'.join((str(int(l - n) // 3600).zfill(2),
+                                str(int((l - n) % 3600) // 60).zfill(2),
+                                str(int(l - n) % 60).zfill(2)))
+                playMenu.delete('timeL')
+                playMenu.create_text(
+                    16, 12, text=timeL,
+                    font=('Consolas', 10),
+                    anchor='w', fill='#ffffff', tags='timeL')
+                playMenu.delete('timeR')
+                playMenu.create_text(
+                    int(playMenu.cget('width')) - 16, 12,
+                    text=timeR,
+                    font=('Consolas', 10),
+                    anchor='e', fill='#ffffff', tags='timeR')
+                time.sleep(1)
+
+TimeBar = threading.Thread(target=timer_bar, daemon=True)
+TimeNums = threading.Thread(target=timer_nums, daemon=True)
+TimeBar.start()
+TimeNums.start()
 #endregion
 
 #region play menu
@@ -32,30 +114,45 @@ playMenu = tk.Canvas(
     highlightthickness=0)
 playMenu.pack(side='bottom')
 
-def song_timer(song):
-    bpfs = 0 #time the song has been playing for in seconds
-    l = MP3(song).info.length #song length in seconds
+playMenu.create_line(88, 16, int(playMenu.cget('width')) - 88, 16, #timer bar
+                    width=4, fill='#9D9D9D', capstyle='round')
 
-    for n in range(int(l)):
-        bpf = (int(bpfs // 3600), int(bpfs % 3600 // 60), int(bpfs % 60))
-        timeL = ':'.join((str(bpf[0]).zfill(2), str(bpf[1]).zfill(2),str(bpf[2]).zfill(2)))
-        rem = int(l - bpfs)
-        rem_h = rem // 3600
-        rem_m = (rem % 3600) // 60
-        rem_s = rem % 60
-        timeR = ':'.join((str(rem_h).zfill(2), str(rem_m).zfill(2), str(rem_s).zfill(2)))
-        playMenu.delete('musiclength')
-        playMenu.create_text(
-            4, 4, text=timeL,
-            font=('Consolas', 8),
-            anchor='w', fill='#ffffff', tags='musiclength')
-        playMenu.create_text(
-            int(playMenu.cget('width')) - 4, 4,
-            text=timeR,
-            font=('Consolas', 8),
-            anchor='e', fill='#ffffff', tags='musiclength')
-        bpfs += 1
-        time.sleep(1)
+playMenu.create_line(int(playMenu.cget('width')) // 2, 72, #pause button
+                    int(playMenu.cget('width')) // 2, 72,
+                    width=50, fill='#696969', capstyle='round')
+def make_pause_button():
+    playMenu.create_line(int(playMenu.cget('width')) // 2, 72,
+                        int(playMenu.cget('width')) // 2, 72,
+                        width=42, fill='#323232', capstyle='round')
+    playMenu.create_text(int(playMenu.cget('width')) // 2 + 3, 72, 
+                        text='▌▌', font=('Consolas', 16), fill='#FFFFFF', tags='pbutton')
+make_pause_button()
+
+def pause_action(i):
+    global paused
+    playMenu.delete('pbutton')
+    if paused:
+        playMenu.create_text(int(playMenu.cget('width')) // 2 + 3, 72, 
+                text='▌▌', font=('Consolas', 16), fill='#FFFFFF', tags='pbutton')
+        sound.music.unpause()
+        paused = False
+    else:
+        playMenu.create_text(int(playMenu.cget('width')) // 2 + 2, 72,
+                            text='►', font=('Arial', 19), fill='#FFFFFF', tags='pbutton')
+        sound.music.pause()
+        paused = True
+
+def click_on_pm(i):
+    global songCurrentlyPlaying, paused, l, bpfs
+    if  87 < i.x < int(playMenu.cget('width')) - 86 and 6 < i.y < 27:
+        bpfs = ((i.x - 87) / (int(playMenu.cget('width')) - 173)) * l
+        sound.music.set_pos(bpfs)
+    elif (i.x - int(playMenu.cget('width')) // 2) ** 2 + (i.y - 72) ** 2 <= 625 and songCurrentlyPlaying != -1:
+        pause_action(i)
+
+playMenu.bind('<Button-1>', click_on_pm)
+r.bind('<space>', pause_action)
+hook(lambda i: pause_action(i) if i.name == 'play/pause media' and i.event_type == 'down' else None)
 #endregion
 
 #region side menu
@@ -119,24 +216,26 @@ def song_highlight(i):
             fill='#ffffff', tags='highlightbox')
 
 def click_on_song(i):
-    global songCurrentlyPlaying
+    global songCurrentlyPlaying, bpfs
     mainMenu.delete('chosenbox')
     if 18 < i.y - scroll < (len(playlistContent[0]) * 36 + 18):
         sound.music.stop()
         sound.music.load(playlistContent[0][(i.y - scroll - 18) // 36])
         sound.music.play()
         songCurrentlyPlaying = (i.y - scroll - 18) // 36
+        bpfs = 0
+        playMenu.create_line(int(playMenu.cget('width')) // 2, 72, #pause button
+                    int(playMenu.cget('width')) // 2, 72,
+                    width=50, fill='#FF7F3F', capstyle='round')
+        make_pause_button()
         song_text()
-        timings = threading.Thread(target=song_timer, daemon=True, args=(playlistContent[0][(i.y - scroll - 18) // 36], ))
-        timings.start()
-        # song_timer(playlistContent[0][(i.y - scroll - 18) // 36])
 
 def menu_scroll(i):
     global scroll
     if i.delta < 0:
-            scroll -= 27
-            song_text()
-            song_highlight(i)
+        scroll -= 27
+        song_text()
+        song_highlight(i)
     else:
         if scroll < 0:
             scroll += 27
