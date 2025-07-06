@@ -7,5 +7,10 @@ sound control in app
 buttons change colour on hover
 make it so that playlists can have special characters in their names
 equaliser
-if window is fullscreened, make the ui different
+change ui for different screen/window sizes
 add all those buttons that shuffle and loop
+have the pause button look different when there isnt a song playing
+cap on how far you can scroll
+arrange playlists
+make a minimum size for the window
+the only menus will be the music library and the playlists
