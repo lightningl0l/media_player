@@ -1,6 +1,6 @@
-import tkinter as tk #main ui library
+import tkinter as tk
 from tkinter import filedialog
-import pygame.mixer as sound #main sound library
+import pygame.mixer as sound
 from os import walk
 from mutagen.mp3 import MP3 #mutagen needs to be installed with "pip install mutagen"
 from mutagen.wave import WAVE
