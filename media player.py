@@ -19,7 +19,8 @@ r.minsize(320, 232)
 sound.init()
 
 WID = 1920
-HEI =  1080
+HEI = 1080
+D = __file__.replace(__file__.split('\\')[-1], '')
 scroll = 0
 songCurrentlyPlaying = -1
 paused = False
@@ -28,16 +29,23 @@ diff = 0
 timeR = ''
 song = ''
 l = 1
-D = __file__.replace(__file__.split('\\')[-1], '')
+
+with open(D + 'settings.json', 'r') as f:
+    volume = j.load(f)['volume']
+sound.music.set_volume(volume / 100)
 
 allSongs = []
-with open(D + 'settings.json', 'r') as f:
-    playlists = j.load(f)['songFolders']
-for i in playlists:
-    for root, dirs, files in walk(i):
-        files = [f.replace(f, i + '/' + f) for f in files]
-        allSongs.extend(files)
-allSongs = [i for i in allSongs if i.split('.')[-1] in ('mp3', 'wav', 'ogg', 'oga', 'mogg')]
+def dir_to_playlist():
+    global allSongs
+    allSongs = []
+    with open(D + 'settings.json', 'r') as f:
+        playlists = j.load(f)['songFolders']
+    for i in playlists:
+        for root, dirs, files in walk(i):
+            files = [f.replace(f, root + '/' + f) for f in files]
+            allSongs.extend(files)
+    allSongs = [i for i in allSongs if i.split('.')[-1] in ('mp3', 'wav', 'ogg', 'oga', 'mogg')]
+dir_to_playlist()
 
 #endregion
 
@@ -45,9 +53,9 @@ allSongs = [i for i in allSongs if i.split('.')[-1] in ('mp3', 'wav', 'ogg', 'og
 def timer_bar():
     global l, bpfs, diff
 
-    n = bpfs * 4
+    n = bpfs * 10
     playMenu.delete('timeline')
-    diff = 88 + (n / (l * 4)) * (playMenu.winfo_width() - 176)
+    diff = 88 + (n / (l * 10)) * (playMenu.winfo_width() - 176)
     playMenu.create_line(88, 16, diff, 16, width=4, fill='#FF7F3F',
                         capstyle='round', tags='timeline')
     playMenu.create_line(diff, 16, diff, 16, width=22, fill='#454545',
@@ -78,8 +86,8 @@ def run_timers():
     global bpfs, songCurrentlyPlaying, song, l, allSongs
 
     while True:
-        while paused:
-            sleep(.02)
+        while paused or bpfs >= l:
+            sleep(.1)
 
         if songCurrentlyPlaying != -1 and song != allSongs[songCurrentlyPlaying]:
             song = allSongs[songCurrentlyPlaying]
@@ -93,8 +101,8 @@ def run_timers():
         if songCurrentlyPlaying != -1:
             timer_bar()
             timer_nums()
-            bpfs += .25
-        sleep(.25)
+            bpfs += .1
+        sleep(.1)
 
 Timers = threading.Thread(target=run_timers, daemon=True)
 #endregion
@@ -110,7 +118,7 @@ playMenu.create_line(88, 16, playMenu.winfo_width() - 88, 16, width=4, #timer ba
 
 def make_pause_button():
     playMenu.delete('pbutton')
-    playMenu.create_line(playMenu.winfo_width() / 2, 72, #pause button
+    playMenu.create_line(playMenu.winfo_width() / 2, 72,
                     playMenu.winfo_width() / 2, 72, width=50, capstyle='round', tags=('pbutton'),
                     fill='#696969' if songCurrentlyPlaying == -1 else '#FF7F3F')
     playMenu.create_line(playMenu.winfo_width() / 2, 72,
@@ -124,31 +132,89 @@ def make_pause_button():
                             font=('Consolas', 16), fill='#FFFFFF', tags=('pbutton',))
 
 def pause_action(i):
-    global paused
-    playMenu.delete('pbutton')
-    if paused:
-        sound.music.unpause()
-        paused = False
-        make_pause_button()
-        playMenu.create_text(playMenu.winfo_width() / 2 + 3, 72, text='▌▌', font=('Consolas', 16),
-                            fill='#FFFFFF', tags=('pbutton',))
-    else:
-        sound.music.pause()
-        paused = True
-        make_pause_button()
-        playMenu.create_text(playMenu.winfo_width() / 2 + 2, 72, text='►', font=('Arial', 19),
-                            fill='#FFFFFF', tags=('pbutton',))
+    global paused, songCurrentlyPlaying
+    if songCurrentlyPlaying != -1:
+        playMenu.delete('pbutton')
+        if paused:
+            sound.music.unpause()
+            paused = False
+            make_pause_button()
+            playMenu.create_text(playMenu.winfo_width() / 2 + 3, 72, text='▌▌', font=('Consolas', 16),
+                                fill='#FFFFFF', tags=('pbutton',))
+        else:
+            sound.music.pause()
+            paused = True
+            make_pause_button()
+            playMenu.create_text(playMenu.winfo_width() / 2 + 2, 72, text='►', font=('Arial', 19),
+                                fill='#FFFFFF', tags=('pbutton',))
 
-def click_on_pm(i):
-    global songCurrentlyPlaying, paused, l, bpfs
-    if  87 < i.x < WID - 86 and 6 < i.y < 27:
-        bpfs = ((i.x - 87) / (playMenu.winfo_width() - 176)) * l
-        sound.music.set_pos(bpfs)
-    elif (i.x - playMenu.winfo_width() / 2) ** 2 + (i.y - 72) ** 2 <= 625 and songCurrentlyPlaying != -1:
+volumeOpenFlag = False
+def show_volume_changes():
+    playMenu.delete('volume part')
+    vr = int(volume / 100 * 177) + playMenu.winfo_width() - 243
+    playMenu.create_line(playMenu.winfo_width() - 243, 31, vr, 31, width=4, fill='#FF7F3F', #line
+                capstyle='round', tags=('volume part',))
+    
+    playMenu.create_line(vr, 31, vr, 31, width=22, fill='#454545', #dot
+                capstyle='round', tags=('volume part',))
+    playMenu.create_line(vr, 31, vr, 31, width=10, fill='#FF7F3F',
+                capstyle='round', tags=('volume part',))
+    
+    playMenu.create_text( #text
+        playMenu.winfo_width() - 40, 31, text=volume, font=('Consolas', 12),
+        fill='#FFFFFF', tags=('volume part',))
+    if volume == 0: mic = '🔇'
+    elif 0 < volume <= 30: mic = '🔈'
+    elif 30 < volume <= 70: mic = '🔉'
+    elif 70 < volume: mic = '🔊'
+    playMenu.create_text(
+        playMenu.winfo_width() - 279, 31, text=mic, font=('Consolas', 16),
+        fill='#FFFFFF', anchor='w', tags=('volume part',))
+    sound.music.set_volume(volume / 100)
+
+def make_volume():
+    playMenu.create_rectangle(
+        playMenu.winfo_width() - 295, 8, playMenu.winfo_width() - 13,
+        58, fill='#303030', outline='#696969', tags=('volume menu',))
+    playMenu.create_line(
+        playMenu.winfo_width() - 243, 31, playMenu.winfo_width() - 66, 31,
+        fill='#9D9D9D', width=4, capstyle='round', tags=('volume menu',))
+    show_volume_changes()
+
+def click_on_PM(i):
+    global l, bpfs, volumeOpenFlag, volume
+    if  (87 < i.x < playMenu.winfo_width() - 296 or\
+        ((not playMenu.winfo_width() - 295 < i.x < playMenu.winfo_width() - 86) if volumeOpenFlag else True)) and 6 < i.y < 27: #timer bar
+        if sound.music.get_busy():
+            bpfs = ((i.x - 87) / (playMenu.winfo_width() - 176)) * l
+            sound.music.set_pos(bpfs)
+    elif (i.x - playMenu.winfo_width() / 2) ** 2 + (i.y - 72) ** 2 <= 625: #pause button
         pause_action(i)
+    elif playMenu.winfo_width() - 173 < i.x < playMenu.winfo_width() - 142 and 58 < i.y < 90: #volume toggle
+        if volumeOpenFlag:
+            playMenu.delete('volume menu', 'volume part')
+            volumeOpenFlag = False
+        else:
+            make_volume()
+            volumeOpenFlag = True
+    elif playMenu.winfo_width() - 243 < i.x < playMenu.winfo_width() - 58 and 20 < i.y < 42:
+        volume = int((i.x - (playMenu.winfo_width() - 243)) / 1.77)
+        if volume > 100: volume = 100
+        elif volume < 0: volume = 0
+        make_volume()
+
+def scroll_on_PM(i):
+    global volumeOpenFlag, volume
+    if volumeOpenFlag:
+        if playMenu.winfo_width() - 295 < i.x < playMenu.winfo_width() - 86 and 8 < i.y < 58:
+            if i.delta > 0: volume += 2
+            else: volume -= 2
+            if volume > 100: volume = 100
+            elif volume < 0: volume = 0
+        make_volume()
 
 def resize_PM(event): #rearrange the ui when window is resized
-    global timeR, diff, bpfs
+    global timeR, diff, bpfs, volumeOpenFlag
 
     playMenu.delete('timeR') #time on the right
     playMenu.create_text(
@@ -169,11 +235,18 @@ def resize_PM(event): #rearrange the ui when window is resized
     playMenu.create_line(diff, 16, diff, 16, width=10, fill='#FF7F3F',
                         capstyle='round', tags=('timeline',))
     
+    playMenu.delete('volume main', 'volume menu', 'volume part')
+    playMenu.create_text(playMenu.winfo_width() - 165, 72, #volume control
+                    text='🔊', font=('Consolas', 16),
+                    fill='#FFFFFF', anchor='w', tags=('volume main',))
+    if volumeOpenFlag:
+        make_volume()
+    
     make_pause_button() #pause button
 
-make_pause_button()
 r.bind('<space>', pause_action)
-playMenu.bind('<Button-1>', click_on_pm)
+playMenu.bind('<Button-1>', click_on_PM)
+playMenu.bind('<MouseWheel>', scroll_on_PM)
 playMenu.bind('<Configure>', resize_PM)
 hook(lambda i: pause_action(i) if i.name == 'play/pause media' and i.event_type == 'down' else None)
 Timers.start()
@@ -186,7 +259,6 @@ findMenu = tk.Canvas(
 findMenu.pack(side='left', fill='y')
 #endregion
 
-#region main screen
 #region top bar
 highMenu = tk.Canvas(
     r, width=WID - 320, height=156, bg='#2B2B2B',
@@ -209,22 +281,60 @@ def click_choice_HM(i):
     currentMenu = 'HM ' + str(i.x // 216)
     #trigger a function that changes the menu based off currentMenu
 
+foldersShownFlag = False
+def show_folder_cmd(i):
+    global foldersShownFlag
+    if foldersShownFlag:
+        highMenu.delete('showfolderbox')
+        foldersShownFlag = False
+    else:
+        highMenu.create_rectangle(
+            1300, 66, 1565, 155, fill='#353535',
+            outline='#696969', tags=('showfolderbox',))
+        highMenu.create_text(
+            1301, 75, text='Folders:', font=('Consolas', 10),
+            anchor='w', fill='#FFFFFF', tags=('showfolderbox',))
+        with open(D + 'settings.json', 'r') as f:
+            playlists = j.load(f)['songFolders']
+            for s in range(len(playlists)):
+                highMenu.create_text(
+                    1301, 93 + s * 18, text=(playlists[s]), font=('Consolas', 10),
+                    anchor='w', fill='#FFFFFF', tags=('showfolderbox',))
+        foldersShownFlag = True
+
+showFoldersButton = tk.Canvas(
+    highMenu, width=29, height=29, bg='#353535',
+    highlightthickness=1, highlightbackground='#696969')
+showFoldersButton.place(x=1535, y=36)
+showFoldersButton.create_text(
+    15, 5, text='⌄', font=('Consolas', 20), fill='#FFFFFF')
+showFoldersButton.bind('<Button-1>', show_folder_cmd)
+
 def add_folder_cmd(i):
     with open(D + 'settings.json', 'r') as f:
         settings = j.load(f)
     newFolder = filedialog.askdirectory(title='Select Song Folder')
-    if newFolder not in settings['songFolders'] and newFolder != '':
-        settings['songFolders'].append(newFolder)
-        with open(D + 'settings.json', 'w') as f:
-            j.dump(settings, f, indent=4)
+    if newFolder != '':
+        if newFolder in settings['songFolders']:
+            settings['songFolders'].remove(newFolder)
+            with open(D + 'settings.json', 'w') as f:
+                j.dump(settings, f, indent=4)
+        else:
+            settings['songFolders'].append(newFolder)
+            with open(D + 'settings.json', 'w') as f:
+                j.dump(settings, f, indent=4)
+    dir_to_playlist()
+    song_text()
+    show_folder_cmd(i)
+    show_folder_cmd(i)
 
 addFolderButton = tk.Canvas(
-    highMenu, width=135, height=29, bg='#353535',
+    highMenu, width=235, height=29, bg='#353535',
     highlightthickness=0)
-addFolderButton.place(x=1420, y=37)
+addFolderButton.place(x=1300, y=37)
 addFolderButton.create_text(
-    8, 14, text='Add Folder', font=('Consolas', 16),
-    anchor='w', fill='#FFFFFF')
+    118, 14, text='Add/Remove Folder',
+    font=('Consolas', 16), fill='#FFFFFF')
 addFolderButton.bind('<Button-1>', add_folder_cmd)
 
 remake_HM_buttons(0, 100)
@@ -232,6 +342,7 @@ highMenu.bind('<Motion>', lambda i: remake_HM_buttons(i.x, i.y)) #highlight effe
 highMenu.bind('<Button-1>', click_choice_HM)
 #endregion
 
+#region main menu
 mainMenu = tk.Canvas(
     r, width=WID - 320, height=HEI - 272,
     bg='#2B2B2B', highlightthickness=0)
@@ -309,5 +420,16 @@ mainMenu.bind('<Motion>', song_highlight)
 mainMenu.bind('<Button-1>', click_on_song)
 mainMenu.bind('<MouseWheel>', menu_scroll)
 #endregion
+
+def on_close():
+    with open(D + 'settings.json', 'r') as f:
+        settings = j.load(f)
+    
+    settings['volume'] = volume
+
+    with open(D + 'settings.json', 'w') as f:
+        j.dump(settings, f, indent=4)
+    r.destroy()
+r.protocol('WM_DELETE_WINDOW', on_close)
 
 r.mainloop()
