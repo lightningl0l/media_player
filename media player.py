@@ -45,7 +45,8 @@ with open(D + 'settings.json', 'r') as f:
     scroll = settings['scroll']
     songCurrentlyPlaying = settings['SCP']
 sound.music.set_volume(volume / 100)
-sound.music.load(allSongs[songCurrentlyPlaying])
+if songCurrentlyPlaying != -1:
+    sound.music.load(allSongs[songCurrentlyPlaying])
 
 #endregion
 
