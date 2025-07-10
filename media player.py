@@ -1,16 +1,14 @@
+#region initialise
 import tkinter as tk
 from tkinter import filedialog
 import pygame.mixer as sound
 from os import walk
-from mutagen.mp3 import MP3 #mutagen needs to be installed with "pip install mutagen"
-from mutagen.wave import WAVE
-from mutagen.oggvorbis import OggVorbis
+from mutagen import File #mutagen needs to be installed with "pip install mutagen"
 from time import sleep
 import threading
 from keyboard import hook #keyboard needs to be installed with "pip install keyboard"
 import json as j
 
-#region initialise
 r = tk.Tk()
 r.title('Lightning Media Player')
 r.state('zoomed')
@@ -21,18 +19,12 @@ sound.init()
 WID = 1920
 HEI = 1080
 D = __file__.replace(__file__.split('\\')[-1], '')
-scroll = 0
-songCurrentlyPlaying = -1
-paused = False
+paused = True
 bpfs = 0
 diff = 0
 timeR = ''
 song = ''
 l = 1
-
-with open(D + 'settings.json', 'r') as f:
-    volume = j.load(f)['volume']
-sound.music.set_volume(volume / 100)
 
 allSongs = []
 def dir_to_playlist():
@@ -46,6 +38,14 @@ def dir_to_playlist():
             allSongs.extend(files)
     allSongs = [i for i in allSongs if i.split('.')[-1] in ('mp3', 'wav', 'ogg', 'oga', 'mogg')]
 dir_to_playlist()
+
+with open(D + 'settings.json', 'r') as f:
+    settings = j.load(f)
+    volume = settings['volume']
+    scroll = settings['scroll']
+    songCurrentlyPlaying = settings['SCP']
+sound.music.set_volume(volume / 100)
+sound.music.load(allSongs[songCurrentlyPlaying])
 
 #endregion
 
@@ -78,30 +78,29 @@ def timer_nums():
         anchor='w', fill='#ffffff', tags='timeL')
     playMenu.delete('timeR')
     playMenu.create_text(
-        playMenu.winfo_width() - 16, 12,
-        text=timeR, font=('Consolas', 10),
+        playMenu.winfo_width() - 16, 12, text=timeR, font=('Consolas', 10),
         anchor='e', fill='#ffffff', tags='timeR')
 
 def run_timers():
     global bpfs, songCurrentlyPlaying, song, l, allSongs
-
     while True:
-        while paused or bpfs >= l:
-            sleep(.1)
+        if bpfs >= l:
+            bpfs = 0
+            songCurrentlyPlaying += 1
+            sound.music.load(allSongs[songCurrentlyPlaying])
+            sound.music.play()
+            song_title()
+            song_highlight(mainMenu.winfo_pointery() - mainMenu.winfo_rooty())
 
         if songCurrentlyPlaying != -1 and song != allSongs[songCurrentlyPlaying]:
-            song = allSongs[songCurrentlyPlaying]
-            if song.lower().split('.')[-1] in ('.mp3'):
-                l = MP3(song).info.length #song length in seconds
-            elif song.lower().split('.')[-1] in ('.wav'):
-                l = WAVE(song).info.length
-            elif song.lower().split('.')[-1] in ('ogg', 'oga', 'mogg'):
-                l = OggVorbis(song).info.length
+            l = File(allSongs[songCurrentlyPlaying]).info.length
 
         if songCurrentlyPlaying != -1:
             timer_bar()
             timer_nums()
             bpfs += .1
+        while paused:
+            sleep(.1)
         sleep(.1)
 
 Timers = threading.Thread(target=run_timers, daemon=True)
@@ -136,7 +135,8 @@ def pause_action(i):
     if songCurrentlyPlaying != -1:
         playMenu.delete('pbutton')
         if paused:
-            sound.music.unpause()
+            if sound.music.get_busy(): sound.music.unpause()
+            else: sound.music.play()
             paused = False
             make_pause_button()
             playMenu.create_text(playMenu.winfo_width() / 2 + 3, 72, text='▌▌', font=('Consolas', 16),
@@ -160,7 +160,7 @@ def show_volume_changes():
     playMenu.create_line(vr, 31, vr, 31, width=10, fill='#FF7F3F',
                 capstyle='round', tags=('volume part',))
     
-    playMenu.create_text( #text
+    playMenu.create_text( #volume text
         playMenu.winfo_width() - 40, 31, text=volume, font=('Consolas', 12),
         fill='#FFFFFF', tags=('volume part',))
     if volume == 0: mic = '🔇'
@@ -324,7 +324,7 @@ def add_folder_cmd(i):
             with open(D + 'settings.json', 'w') as f:
                 j.dump(settings, f, indent=4)
     dir_to_playlist()
-    song_text()
+    song_title()
     show_folder_cmd(i)
     show_folder_cmd(i)
 
@@ -348,13 +348,13 @@ mainMenu = tk.Canvas(
     bg='#2B2B2B', highlightthickness=0)
 mainMenu.pack(side='right', fill='y')
 
-def song_text():
+def song_title():
     mainMenu.delete('songtext')
-    for s in range(len(allSongs)):
+    for s in range(max(-scroll // 36 - 1, 0), min(len(allSongs), (HEI - 272 - scroll) // 36)): #only render seen songs
         if s == songCurrentlyPlaying:
             mainMenu.create_rectangle(
                 36, songCurrentlyPlaying * 36 + scroll + 20,
-                WID - 356, songCurrentlyPlaying * 36 + scroll + 52,
+                mainMenu.winfo_width() - 36, songCurrentlyPlaying * 36 + scroll + 52,
                 fill='#323232', width=0, tags='songtext')
             mainMenu.create_text(
                 48, s * 36 + 36 + scroll,
@@ -365,7 +365,7 @@ def song_text():
             if s % 2 == 0:
                 mainMenu.create_rectangle(
                     36, s * 36 + scroll + 20,
-                    WID - 356, s * 36 + scroll + 52,
+                    mainMenu.winfo_width() - 36, s * 36 + scroll + 52,
                     fill='#2E2E2E', width=0, tags='songtext')
             mainMenu.create_text(
                 48, s * 36 + 36 + scroll,
@@ -379,46 +379,53 @@ def song_text():
             fill='#ffffff', tags='songtext')
 
 def song_highlight(i):
+    try: pos = i.y
+    except AttributeError: pos = i
     mainMenu.delete('highlightbox')
-    if 18 < i.y - scroll < (len(allSongs) * 36 + 18):
+    if 18 < pos - scroll < (len(allSongs) * 36 + 18):
         mainMenu.create_rectangle(
-            36, ((i.y - scroll - 18) // 36) * 36 + 20 + scroll,
-            WID - 356, ((i.y - scroll - 18) // 36) * 36 + 52 + scroll,
+            36, ((pos - scroll - 18) // 36) * 36 + 20 + scroll,
+            mainMenu.winfo_width() - 36, ((pos - scroll - 18) // 36) * 36 + 52 + scroll,
             fill='#323232', width=0, tags='highlightbox')
         mainMenu.create_text(
-            48, ((i.y - scroll - 18) // 36) * 36 + 36 + scroll,
-            text='.'.join(allSongs[(i.y - scroll - 18) // 36].split('/')[-1].split('.')[:-1]),
+            48, ((pos - scroll - 18) // 36) * 36 + 36 + scroll,
+            text='.'.join(allSongs[(pos - scroll - 18) // 36].split('/')[-1].split('.')[:-1]),
             font=('Consolas', 16, 'bold'), anchor='w',
             fill='#ffffff', tags='highlightbox')
 
 def click_on_song(i):
-    global songCurrentlyPlaying, bpfs
+    global songCurrentlyPlaying, bpfs, paused
     mainMenu.delete('chosenbox')
     if 18 < i.y - scroll < (len(allSongs) * 36 + 18):
         sound.music.stop()
         sound.music.load(allSongs[(i.y - scroll - 18) // 36])
         sound.music.play()
+        paused = False
         songCurrentlyPlaying = (i.y - scroll - 18) // 36
         bpfs = 0
         make_pause_button()
-        song_text()
+        song_title()
 
 def menu_scroll(i):
     global scroll
     if i.delta < 0:
         scroll -= 27
-        song_text()
+        song_title()
         song_highlight(i)
     else:
         if scroll < 0:
             scroll += 27
-            song_text()
+            song_title()
             song_highlight(i)
 
-song_text()
+def resize_MM(event):
+    song_title()
+    mainMenu.delete('highlightbox')
+
 mainMenu.bind('<Motion>', song_highlight)
 mainMenu.bind('<Button-1>', click_on_song)
 mainMenu.bind('<MouseWheel>', menu_scroll)
+mainMenu.bind('<Configure>', resize_MM)
 #endregion
 
 def on_close():
@@ -426,6 +433,8 @@ def on_close():
         settings = j.load(f)
     
     settings['volume'] = volume
+    settings['scroll'] = scroll
+    settings['SCP'] = songCurrentlyPlaying
 
     with open(D + 'settings.json', 'w') as f:
         j.dump(settings, f, indent=4)
